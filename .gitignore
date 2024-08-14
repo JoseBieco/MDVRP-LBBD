@@ -9,3 +9,4 @@ src/Professor.py
 src/Novo.py
 src/Benders_0.py
 src/MDVRP.ipynb
+*.xlsx

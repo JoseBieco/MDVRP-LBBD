@@ -1,0 +1,11 @@
+PDFs/
+datasets/C-mdvrp_pr
+datasets/de-smet-2017-belgium-road-km-road-time-air-50-2750-visits
+datasets/Mdvsp_4dep_500trips
+datasets/Mdvsp_8dep_500trips
+datasets/E-n13-k4.vrp
+Links.txt
+src/Professor.py
+src/Novo.py
+src/Benders_0.py
+src/MDVRP.ipynb

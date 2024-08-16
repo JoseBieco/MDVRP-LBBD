@@ -3,6 +3,12 @@ from collections import defaultdict
 import logging
 from itertools import combinations, product
 import math
+import os
+import time
+
+# Constantes
+INSTANCES_DIR = r'../datasets/C-mdvrp/Ajustados'
+RESULTS_DIR = r'./Resultados/Ajustados'
 
 # Função para ler instância personalizada de MDVRP conforme o formato especificado
 def read_mdvrp_instance(file_path):
@@ -17,7 +23,7 @@ def read_mdvrp_instance(file_path):
     for i in range(1, t + 1):
         D, Q = map(int, lines[i].split())
         depots.append({'max_duration': D, 'max_load': Q})
-    
+
     # Dados dos clientes
     customers = []
     for i in range(t + 1, len(lines)):
@@ -78,7 +84,81 @@ def calculate_distance_matrix(customers, depots):
 # def vehicles_upperbound(instance):
 #     return instance['dimension']
 
+def display_results(model, customers, depots, vehicles, depots_ids, demands):
+    zvalues = model.getAttr('X', model._z)
 
+    # Estrutura para armazenar os resultados
+    results = defaultdict(lambda: defaultdict(lambda: {'clients': [], 'load': 0}))
+    
+    # Preencher os resultados
+    for (i, k, d) in zvalues.keys():
+        if zvalues[i, k, d] > 0.5:
+            results[d][k]['clients'].append(i + 1)
+            results[d][k]['load'] += demands[i]
+    
+    write_results = {
+            'objVal': model.objVal,
+            'Runtime': model.Runtime,
+            'MIPGap': model.MIPGap,
+            'lines': []
+            }
+
+    # Imprimir a tabela de resultados
+    print(f'Model Obj: {model.objVal}, Rumtime: {model.Runtime}, MIPGap: {model.MIPGap}')
+    print("-" * 60)
+    print(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}")
+    print("-" * 60)
+    
+    for d in depots_ids:
+        for k in vehicles:
+            if results[d][k]['clients']:
+                clients_sequence = ' -> '.join(map(str, results[d][k]['clients']))
+                print(f"{1 + d:<10} {1 + k:<10} {results[d][k]['load']:<20} {clients_sequence}")
+                write_results['lines'].append(f"{1 + d:<10} {1 + k:<10} {results[d][k]['load']:<20} {clients_sequence}")
+
+    return write_results
+
+def new_filename(filename: str, localtime):
+    # Procura a existência de um separador
+    if filename.find('.') != -1:
+        # Separa nome do arquivo da extensão
+        filename, extension = filename.split(sep='.')
+        filename = f'{filename}_{localtime.tm_mday}_{localtime.tm_mon}_{localtime.tm_hour}_{localtime.tm_min}_{localtime.tm_sec}'
+        return f'{filename}.{extension}'
+
+    filename = f'{filename}_{localtime.tm_mday}_{localtime.tm_mon}_{localtime.tm_hour}_{localtime.tm_min}_{localtime.tm_sec}'
+    return f'{filename}'
+
+def write_result_file(path, filename, results):
+    # Cria a pasta para os Resuldos caso não exista
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    # Verifica se já não existe um arquivo com o mesmo nome (Mesma instância executada)
+    if os.path.exists(f'{path}/{filename}'):
+        filename = new_filename(filename=filename, localtime=time.localtime())
+
+    filePath = f'{path}/{filename}'
+
+    try:
+        file = open(filePath, '+a')
+
+        file.write(f"Tempo de Execucaoo total: {results['Runtime']}\n")
+        file.write(f"MIPGAP: {results['MIPGap']}\n")
+        file.write(f"Model Obj: {results['objVal']}\n")
+        file.write("-" * 60 + '\n')
+        file.write(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}\n")
+        file.write("-" * 60 + '\n')
+
+        for line in results['lines']:
+            file.write(line + '\n')
+
+        file.close()
+    except:
+        print(f'Erro ao escrever no arquivo {filePath}!!!')
+    finally:
+        return True   
+    
 def route_cost_lowerbound(edges_weights):
     total = 0
     n = len(edges_weights)
@@ -113,13 +193,19 @@ def generate_opt_cuts(model):
         if zvalues[i, k, d] > 0.5:
             clients[k][d].append(i)
 
+    #print(clients.items())
     for (k, dep_clients) in clients.items():
+        #print(f'{k} - {dep_clients.items()}')
         for d, cs in dep_clients.items():
+            print(f'Depósito: {d}, Clientes: {cs}')
             if len(cs) > 1:
                 obj = solve_tsp(model._edges_weights, cs, d, model._num_customers, model._demands, model._Q[d])
-                if(obj != -1):
-                    expr = grb.quicksum((1 - model._z[i, k, d]) for i in cs)
-                    model.cbLazy(model._alpha[k, d] >= obj - obj * expr)
+                # print(f'Varíáveis TSP:')
+                # print(f'Clientes: {cs}')
+                # print(f'Depósito: {d}')
+
+                expr = grb.quicksum((1 - model._z[i, k, d]) for i in cs)
+                model.cbLazy(model._alpha[k, d] >= obj - obj * expr)
 
                 # Generate feasibility cuts for vehicle load
                 load = sum(model._demands[i] * zvalues[i, k, d] for i in cs)
@@ -132,21 +218,20 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
     model = grb.Model("TSP-DL-subtours-Load")
     model.Params.OutputFlag = 0
 
-    nodes = [num_customers + depot] + clients
-    arcs = list(set(product(nodes, nodes)))
+    nodes = [num_customers + depot] + clients # Inicia-se com o depósito
+    arcs = list(product(nodes, nodes))
 
-    x = model.addVars(set(arcs), vtype=grb.GRB.BINARY, name='x')
+    x = model.addVars(arcs, vtype=grb.GRB.BINARY, name='x')
     u = model.addVars(nodes, ub=len(nodes)-2, vtype=grb.GRB.CONTINUOUS, name='u')
     load = model.addVars(nodes, lb=0, ub=max_load, vtype=grb.GRB.CONTINUOUS, name='load')
 
-    # Objective: Minimize total travel cost
-    # model.setObjective(
-    #     grb.quicksum(x[i, j] * round(edges_weights[i][j], 2) for (i, j) in x.keys()), 
-    #     grb.GRB.MINIMIZE)
-    
+    # Objective: Minimize total travel cost    
     model.setObjective(
     grb.quicksum(x[i, j] * round(edges_weights[i][j], 2) for (i, j) in x.keys()), 
     grb.GRB.MINIMIZE)
+
+    for i in nodes:
+        x[i, i].setAttr(grb.GRB.Attr.UB, 0.0)
 
     # Ensure that each node (customer or depot) is visited exactly once
     model.addConstrs(
@@ -165,6 +250,11 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
         if i != j
     )
 
+    model.addConstrs(
+        (x[i, j] + x[j, i] <= 1)
+        for (i, j) in combinations(nodes, 2)
+    )
+
     # Vehicle load constraints
     for i in clients:
         model.addConstr(
@@ -172,14 +262,13 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
             name=f"vehicle_load_{i}")
 
     model.optimize()
+    print(f'objVal TSP: {model.objVal}\n')
 
-    if model.status == grb.GRB.OPTIMAL:
-        return model.objVal
-    else:
-        return -1
+    return model.objVal
 
 
-def solve_model(filename):
+
+def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     # Reading instance
     problem_type, num_vehicles, num_customers, num_depots, p_depots, p_customers = read_mdvrp_instance(filename)
     
@@ -195,13 +284,14 @@ def solve_model(filename):
 
     model = grb.Model("MDVRP-Benders-Load")
     model.Params.LazyConstraints = 1
-    model.Params.TimeLimit = 60 * 1
+    model.Params.TimeLimit = 60 * execution_minutes
+    model.Params.OutputFlag = 1 # Remover depois de montar o toy
 
     # Decision variables
     z = model.addVars(product(customers, vehicles, depots), vtype=grb.GRB.BINARY, name="z")
     y = model.addVars(product(vehicles, depots), vtype=grb.GRB.BINARY, name="y")
     alpha = model.addVars(product(vehicles, depots), lb=0, vtype=grb.GRB.CONTINUOUS, name="alpha")
-    load = model.addVars(product(vehicles, depots), lb=0, vtype=grb.GRB.CONTINUOUS, name="load")
+    load = model.addVars(product(vehicles, depots), lb=0, ub=80.0, vtype=grb.GRB.CONTINUOUS, name="load")
 
     vehicle_penallity = 1000
 
@@ -224,7 +314,6 @@ def solve_model(filename):
     model.addConstrs(
         (grb.quicksum(y[v, d] for v in vehicles) <= num_vehicles)
         for d in depots)
-
 
     # 4. Linking alpha with travel costs
     for (c, v, d) in product(customers, vehicles, depots):
@@ -257,38 +346,34 @@ def solve_model(filename):
     model._y = y
     model._alpha = alpha
     model._load = load
+
+    # Benders Callback
     model.optimize(mycallback)
 
     # Exibir os resultados finais em forma de tabela
-    display_results(model, customers, depots, vehicles, depots, demands)
+    results = display_results(model, customers, depots, vehicles, depots, demands)
 
-def display_results(model, customers, depots, vehicles, depots_ids, demands):
-    zvalues = model.getAttr('X', model._z)
-    
-    # Estrutura para armazenar os resultados
-    results = defaultdict(lambda: defaultdict(lambda: {'clients': [], 'load': 0}))
-    
-    # Preencher os resultados
-    for (i, k, d) in zvalues.keys():
-        if zvalues[i, k, d] > 0.5:
-            results[d][k]['clients'].append(i)
-            results[d][k]['load'] += demands[i]
-    
-    # Imprimir a tabela de resultados
-    print(f'Model Obj: {model.objVal}')
-    print("-" * 60)
-    print(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}")
-    print("-" * 60)
-    
-    for d in depots_ids:
-        for k in vehicles:
-            if results[d][k]['clients']:
-                clients_sequence = ' -> '.join(map(str, results[d][k]['clients']))
-                print(f"{1 + d:<10} {1 + k:<10} {results[d][k]['load']:<20} {clients_sequence}")
+    # Valida o parâmetro de criar um arquivo para os resultados
+    if write_results == 1:
+        write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=results)
 
+
+def get_instancias(path: str):
+    return os.listdir(path)
+
+__name__ = str('__teste__')
 
 if __name__ == "__main__":
-    filename = r'../datasets/C-mdvrp/p01'
-    solve_model(filename)
+    instancias = get_instancias(path=INSTANCES_DIR)
+    for instancia in instancias:
+        filePath = f'{INSTANCES_DIR}/{instancia}'
+        solve_model(filePath)
+
+if __name__ == '__teste__':
+    filePath = r'../datasets/C-mdvrp/toy2'
+    solve_model(filePath, execution_minutes=1, write_results=0)
+
+
+
 
 

@@ -168,7 +168,7 @@ def solve_model(filename):
     problem_type, num_vehicles, num_customers, num_depots, depots, p_customers = read_mdvrp_instance(filename)
     
     Q = [depot['max_load'] for depot in depots]
-    demands = [customer['demand'] for customer in p_customers[:-4]]
+    demands = [customer['demand'] for customer in p_customers[:-num_depots]]
     n = num_customers + num_depots  # Customers + depot
     customers = list(range(0, num_customers))
     K = num_vehicles # * num_depots
@@ -176,7 +176,7 @@ def solve_model(filename):
 
     # p_customers[:-4] > retirando os depósitos da lista de p_customers para 
     # a matriz manter seu tamanho correto de (n + t) X (n + t)
-    edges_weights = calculate_distance_matrix(p_customers[:-4], depots)
+    edges_weights = calculate_distance_matrix(p_customers[:-num_depots], depots)
 
     #depots_edges_weights = calculate_distance_matrix(p_customers[:-4], depots)
     
@@ -200,9 +200,12 @@ def solve_model(filename):
     #     grb.quicksum(alpha[k, d] for k, d in product(vehicles, depots)) + 
     #     1000 * grb.quicksum(y[v, d] for v, d in product(vehicles, depots)), grb.GRB.MINIMIZE)
     
-    model.setObjective(
-        grb.quicksum(alpha[v, d] * y[v, d] for v, d in product(vehicles, depots)), grb.GRB.MINIMIZE)
+    # model.setObjective(
+    #     grb.quicksum(alpha[v, d] * y[v, d] for v, d in product(vehicles, depots)), grb.GRB.MINIMIZE)
     
+    model.setObjective(grb.quicksum(edges_weights[c][num_customers + d] * z[c, v, d]
+                                    for c, v, d in product(customers, vehicles, depots)),
+                       grb.GRB.MINIMIZE)
 
     # for d in depots:
     #     for v in vehicles:
@@ -272,16 +275,36 @@ def solve_model(filename):
         model.computeIIS()
         model.write("model.ilp")
 
-    values = model.getAttr('X', model.getVars())
-    names = model.getAttr('VarName', model.getVars())
+# Exibir os resultados finais em forma de tabela
+    display_results(model, customers, depots, vehicles, depots, demands)
 
+def display_results(model, customers, depots, vehicles, depots_ids, demands):
+    zvalues = model.getAttr('X', model._z)
+    
+    # Estrutura para armazenar os resultados
+    results = defaultdict(lambda: defaultdict(lambda: {'clients': [], 'load': 0}))
+    
+    # Preencher os resultados
+    for (i, k, d) in zvalues.keys():
+        if zvalues[i, k, d] > 0.5:
+            results[d][k]['clients'].append(i)
+            results[d][k]['load'] += demands[i]
+    
+    # Imprimir a tabela de resultados
     print(f'Model Obj: {model.objVal}')
-    for (val, name) in zip(values, names):
-        if val > 0.5:
-            print(name, val)
+    print("-" * 60)
+    print(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}")
+    print("-" * 60)
+    
+    for d in depots_ids:
+        for k in vehicles:
+            if results[d][k]['clients']:
+                clients_sequence = ' -> '.join(map(str, results[d][k]['clients']))
+                print(f"{d:<10} {k:<10} {results[d][k]['load']:<20} {clients_sequence}")
+
 
 if __name__ == "__main__":
-    filename = r'../datasets/C-mdvrp/p01'
+    filename = r'../datasets/C-mdvrp/toy'
     solve_model(filename)
 
 

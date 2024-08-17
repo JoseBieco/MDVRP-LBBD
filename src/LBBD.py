@@ -140,41 +140,30 @@ def write_result_file(path, filename, results):
 
     filePath = f'{path}/{filename}'
 
-    try:
+    if results == None:
         file = open(filePath, '+a')
-
-        file.write(f"Tempo de Execucaoo total: {results['Runtime']}\n")
-        file.write(f"MIPGAP: {results['MIPGap']}\n")
-        file.write(f"Model Obj: {results['objVal']}\n")
-        file.write("-" * 60 + '\n')
-        file.write(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}\n")
-        file.write("-" * 60 + '\n')
-
-        for line in results['lines']:
-            file.write(line + '\n')
-
+        file.write(f"Não foram encontradas soluções para o modelo!\n")
         file.close()
-    except:
-        print(f'Erro ao escrever no arquivo {filePath}!!!')
-    finally:
-        return True   
+    else:
+        try:
+            file = open(filePath, '+a')
+
+            file.write(f"Tempo de Execucaoo total: {results['Runtime']}\n")
+            file.write(f"MIPGAP: {results['MIPGap']}\n")
+            file.write(f"Model Obj: {results['objVal']}\n")
+            file.write("-" * 60 + '\n')
+            file.write(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}\n")
+            file.write("-" * 60 + '\n')
+
+            for line in results['lines']:
+                file.write(line + '\n')
+
+            file.close()
+        except:
+            print(f'Erro ao escrever no arquivo {filePath}!!!')
+        finally:
+            return True   
     
-def route_cost_lowerbound(edges_weights):
-    total = 0
-    n = len(edges_weights)
-    for j in range(n):
-        total += min(round(edges_weights[i][j], 2) for i in range(n) if i != j)
-    return total
-
-
-def visit_upperbound(node_idx, edges_weights):
-    total = 0
-    n = len(edges_weights)
-    total += max(round(edges_weights[node_idx][j], 2) for j in range(n))
-    total += max(round(edges_weights[j][node_idx], 2) for j in range(n))
-    return total
-
-
 def mycallback(model, where):
     if where == grb.GRB.Callback.MIPSOL:
         try:
@@ -197,7 +186,7 @@ def generate_opt_cuts(model):
     for (k, dep_clients) in clients.items():
         #print(f'{k} - {dep_clients.items()}')
         for d, cs in dep_clients.items():
-            print(f'Depósito: {d}, Clientes: {cs}')
+            #print(f'Depósito: {d}, Clientes: {cs}')
             if len(cs) > 1:
                 obj = solve_tsp(model._edges_weights, cs, d, model._num_customers, model._demands, model._Q[d])
                 # print(f'Varíáveis TSP:')
@@ -223,7 +212,7 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
 
     x = model.addVars(arcs, vtype=grb.GRB.BINARY, name='x')
     u = model.addVars(nodes, ub=len(nodes)-2, vtype=grb.GRB.CONTINUOUS, name='u')
-    load = model.addVars(nodes, lb=0, ub=max_load, vtype=grb.GRB.CONTINUOUS, name='load')
+    #load = model.addVars(nodes, lb=0, ub=max_load, vtype=grb.GRB.CONTINUOUS, name='load')
 
     # Objective: Minimize total travel cost    
     model.setObjective(
@@ -262,7 +251,7 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
             name=f"vehicle_load_{i}")
 
     model.optimize()
-    print(f'objVal TSP: {model.objVal}\n')
+    #print(f'objVal TSP: {model.objVal}\n')
 
     return model.objVal
 
@@ -350,24 +339,32 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     # Benders Callback
     model.optimize(mycallback)
 
-    # Exibir os resultados finais em forma de tabela
-    results = display_results(model, customers, depots, vehicles, depots, demands)
+    try:
+            # Exibir os resultados finais em forma de tabela
+        results = display_results(model, customers, depots, vehicles, depots, demands)
 
-    # Valida o parâmetro de criar um arquivo para os resultados
-    if write_results == 1:
-        write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=results)
+        # Valida o parâmetro de criar um arquivo para os resultados
+        if write_results == 1:
+            write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=results)
+    except:
+        # Valida o parâmetro de criar um arquivo para os resultados
+        if write_results == 1:
+            write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=None)
+
+
 
 
 def get_instancias(path: str):
     return os.listdir(path)
 
-__name__ = str('__teste__')
+__name__ = str('__main__')
 
 if __name__ == "__main__":
     instancias = get_instancias(path=INSTANCES_DIR)
     for instancia in instancias:
         filePath = f'{INSTANCES_DIR}/{instancia}'
-        solve_model(filePath)
+        print(f'Instancia: {instancia}\n')
+        solve_model(filename=filePath, write_results=1, execution_minutes=30)
 
 if __name__ == '__teste__':
     filePath = r'../datasets/C-mdvrp/toy2'

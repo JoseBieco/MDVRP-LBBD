@@ -166,8 +166,8 @@ def write_result_file(path, filename, results):
         finally:
             return True   
 
-def solve_model(file_path, execution_minutes:int = 1, write_results: int = 0):
-    problem_type, num_vehicles, num_customers, num_depots, p_depots, p_customers = read_mdvrp_instance(file_path)
+def solve_model(filename, execution_minutes:int = 1, write_results: int = 0):
+    problem_type, num_vehicles, num_customers, num_depots, p_depots, p_customers = read_mdvrp_instance(filename)
     
     # Capacidade dos veículos em cada depósito
     Q = [depot['max_load'] for depot in p_depots]
@@ -261,17 +261,17 @@ def solve_model(file_path, execution_minutes:int = 1, write_results: int = 0):
 
         # Valida o parâmetro de criar um arquivo para os resultados
         if write_results == 1:
-            write_result_file(path=RESULTS_DIR, filename=file_path.split('/')[-1], results=results)
+            write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=results)
     except:
         # Valida o parâmetro de criar um arquivo para os resultados
         if write_results == 1:
-            write_result_file(path=RESULTS_DIR, filename=file_path.split('/')[-1], results=None)
+            write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=None)
     
 
 def get_instancias(path: str):
     return os.listdir(path)
 
-__name__ = str('__teste__')
+__name__ = str('__main__')
 
 if __name__ == "__main__":
     instancias = get_instancias(path=INSTANCES_DIR)
@@ -281,5 +281,5 @@ if __name__ == "__main__":
         solve_model(filename=filePath, write_results=1, execution_minutes=30)
 
 if __name__ == '__teste__':
-    filePath = r'../datasets/C-mdvrp/Ajustados/p02-grande'
+    filePath = r'../datasets/C-mdvrp/Ajustados/p01-medio'
     resultado = solve_model(filePath, execution_minutes=1, write_results=0)

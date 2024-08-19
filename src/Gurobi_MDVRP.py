@@ -231,12 +231,6 @@ def solve_model(filename, execution_minutes:int = 1, write_results: int = 0):
         name="link_z_y"
     )
 
-    # # 4. Cada veículo pode estar alocado a no máximo um depósito
-    # model.addConstrs(
-    #     (grb.quicksum(y[k, d] for d in depots) <= 1)
-    #     for k in vehicles
-    # )
-
     # 5. Subtour elimination constraints (eliminação de subtours para garantir rotas válidas)
     u = model.addVars(nodes, vtype=grb.GRB.CONTINUOUS, name="u")
     n = len(customers)

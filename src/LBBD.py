@@ -346,7 +346,7 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
 def get_instancias(path: str):
     return os.listdir(path)
 
-__name__ = str('__main__')
+__name__ = str('__teste__')
 
 if __name__ == "__main__":
     instancias = get_instancias(path=INSTANCES_DIR)
@@ -356,7 +356,7 @@ if __name__ == "__main__":
         solve_model(filename=filePath, write_results=1, execution_minutes=30)
 
 if __name__ == '__teste__':
-    filePath = r'../datasets/C-mdvrp/toy2'
+    filePath = r'../datasets/C-mdvrp/Ajustados/p01-pequeno'
     solve_model(filePath, execution_minutes=1, write_results=0)
 
 

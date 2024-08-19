@@ -47,21 +47,6 @@ def read_mdvrp_instance(file_path):
         depot.update({'x': customer['x'], 'y': customer['y']})
 
     return problem_type, m, n, t, depots, customers
-    #return {'type': problem_type, 'm': m, 'n': n, 't': t, 'depots': depots, 'customers': customers}
-
-
-
-# def calculate_distance_matrix(customers, depots):
-#     Criação da matriz de distâncias
-#     distancias_euclidianas = [
-#         [
-#             math.sqrt((depot['x'] - customer['x']) ** 2 + (depot['y'] - customer['y']) ** 2)
-#             for customer in customers
-#         ]
-#         for depot in depots
-#     ]
-    
-#     return distancias_euclidianas
 
 def calculate_distance_matrix(customers, depots):
     # Combinar coordenadas dos clientes e depósitos
@@ -80,9 +65,6 @@ def calculate_distance_matrix(customers, depots):
                 distance_matrix[i][j] = math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     
     return distance_matrix
-
-# def vehicles_upperbound(instance):
-#     return instance['dimension']
 
 def display_results(model, customers, depots, vehicles, depots_ids, demands):
     zvalues = model.getAttr('X', model._z)
@@ -202,16 +184,10 @@ def generate_opt_cuts(model):
         if zvalues[i, k, d] > 0.5:
             clients[k][d].append(i)
 
-    #print(clients.items())
     for (k, dep_clients) in clients.items():
-        #print(f'{k} - {dep_clients.items()}')
         for d, cs in dep_clients.items():
-            #print(f'Depósito: {d}, Clientes: {cs}')
             if len(cs) > 1:
                 obj = solve_tsp(model._edges_weights, cs, d, model._num_customers, model._demands, model._Q[d])
-                # print(f'Varíáveis TSP:')
-                # print(f'Clientes: {cs}')
-                # print(f'Depósito: {d}')
 
                 expr = grb.quicksum((1 - model._z[i, k, d]) for i in cs)
                 model.cbLazy(model._alpha[k, d] >= obj - obj * expr)
@@ -232,7 +208,6 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
 
     x = model.addVars(arcs, vtype=grb.GRB.BINARY, name='x')
     u = model.addVars(nodes, ub=len(nodes)-2, vtype=grb.GRB.CONTINUOUS, name='u')
-    #load = model.addVars(nodes, lb=0, ub=max_load, vtype=grb.GRB.CONTINUOUS, name='load')
 
     # Objective: Minimize total travel cost    
     model.setObjective(
@@ -271,7 +246,6 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
             name=f"vehicle_load_{i}")
 
     model.optimize()
-    #print(f'objVal TSP: {model.objVal}\n')
 
     return model.objVal
 
@@ -335,9 +309,6 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
         for k, d in product(vehicles, depots))
 
     # 6. Symmetry breaking constraints
-    # for (k, d) in product(vehicles[1:], depots):
-    #     model.addConstr(y[k - 1, d] >= y[k, d])
-    #     model.addConstr(alpha[k - 1, d] >= alpha[k, d])
     for d in depots:
         for k in range(1, len(vehicles)):
             model.addConstr(y[k - 1, d] >= y[k, d], name=f"symmetry_y_{k}_{d}")

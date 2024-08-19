@@ -8,7 +8,7 @@ import time
 
 # Constantes
 INSTANCES_DIR = r'../datasets/C-mdvrp/Ajustados'
-RESULTS_DIR = r'./Resultados/Ajustados'
+RESULTS_DIR = r'./Resultados/Benders'
 
 # Função para ler instância personalizada de MDVRP conforme o formato especificado
 def read_mdvrp_instance(file_path):
@@ -96,23 +96,42 @@ def display_results(model, customers, depots, vehicles, depots_ids, demands):
             results[d][k]['clients'].append(i + 1)
             results[d][k]['load'] += demands[i]
     
+     # Soma distância total percorrida
+    distancia_total = 0
+    for d in depots_ids:
+        for k in vehicles:
+            percurso = results[d][k]['clients']
+            for i in range(len(percurso)):
+                if i == 0:
+                    distancia_total += round(model._edges_weights[len(customers) + d][percurso[i]-1], 2)
+                    #print(f'D{d+1} > {percurso[i]} - {round(model._edges_weights[len(customers) + d][percurso[i]-1], 2)}')
+                if i + 1 == len(percurso):
+                    distancia_total += round(model._edges_weights[percurso[i]-1][len(customers) + d], 2)
+                    #print(f'{percurso[i]} > D{d+1} - {round(model._edges_weights[percurso[i]-1][len(customers) + d], 2)}')
+                else:
+                    distancia_total +=  round(model._edges_weights[percurso[i]-1][percurso[i+1]-1], 2)
+                    #print(f'{percurso[i]} > {percurso[i+1]} - {round(model._edges_weights[percurso[i]-1][percurso[i+1]-1], 2)}')
+
     write_results = {
             'objVal': model.objVal,
             'Runtime': model.Runtime,
             'MIPGap': model.MIPGap,
-            'lines': []
+            'lines': [],
+            'distancia_total': round(distancia_total, 2)
             }
 
     # Imprimir a tabela de resultados
     print(f'Model Obj: {model.objVal}, Rumtime: {model.Runtime}, MIPGap: {model.MIPGap}')
+    print(f'Distancia total calculada: {round(distancia_total, 2)}')
     print("-" * 60)
     print(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}")
     print("-" * 60)
-    
+
     for d in depots_ids:
         for k in vehicles:
             if results[d][k]['clients']:
                 clients_sequence = ' -> '.join(map(str, results[d][k]['clients']))
+                #print(f"-{results[d][k]['clients']}\n")
                 print(f"{1 + d:<10} {1 + k:<10} {results[d][k]['load']:<20} {clients_sequence}")
                 write_results['lines'].append(f"{1 + d:<10} {1 + k:<10} {results[d][k]['load']:<20} {clients_sequence}")
 
@@ -151,6 +170,7 @@ def write_result_file(path, filename, results):
             file.write(f"Tempo de Execucaoo total: {results['Runtime']}\n")
             file.write(f"MIPGAP: {results['MIPGap']}\n")
             file.write(f"Model Obj: {results['objVal']}\n")
+            file.write(f"Distancia total: {results['distancia_total']}\n")
             file.write("-" * 60 + '\n')
             file.write(f"{'Depósito':<10} {'Veículo':<10} {'Capacidade Utilizada':<20} {'Clientes Atendidos'}\n")
             file.write("-" * 60 + '\n')
@@ -340,7 +360,7 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     model.optimize(mycallback)
 
     try:
-            # Exibir os resultados finais em forma de tabela
+        # Exibir os resultados finais em forma de tabela
         results = display_results(model, customers, depots, vehicles, depots, demands)
 
         # Valida o parâmetro de criar um arquivo para os resultados
@@ -350,8 +370,6 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
         # Valida o parâmetro de criar um arquivo para os resultados
         if write_results == 1:
             write_result_file(path=RESULTS_DIR, filename=filename.split('/')[-1], results=None)
-
-
 
 
 def get_instancias(path: str):

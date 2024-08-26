@@ -10,6 +10,10 @@ import time
 INSTANCES_DIR = r'../datasets/C-mdvrp/Ajustados'
 RESULTS_DIR = r'./Resultados/Benders'
 
+# Variável Global
+SOLUTIONS_POOL = []
+CLIENTS_SOLUTIONS = {}
+
 # Função para ler instância personalizada de MDVRP conforme o formato especificado
 def read_mdvrp_instance(file_path):
     with open(file_path, 'r') as file:
@@ -186,20 +190,31 @@ def generate_opt_cuts(model):
 
     for (k, dep_clients) in clients.items():
         for d, cs in dep_clients.items():
-            if len(cs) > 1:
-                obj = solve_tsp(model._edges_weights, cs, d, model._num_customers, model._demands, model._Q[d])
+            # Cria uma possível solução para a pool de soluções
+
+            clients_list = tuple(sorted([*cs, d]))
+            
+            if len(cs) > 1 and clients_list not in CLIENTS_SOLUTIONS.keys():
+                obj = solve_tsp(model._edges_weights, cs, d, model._num_customers)
 
                 expr = grb.quicksum((1 - model._z[i, k, d]) for i in cs)
                 model.cbLazy(model._alpha[k, d] >= obj - obj * expr)
 
-                # Generate feasibility cuts for vehicle load
-                load = sum(model._demands[i] * zvalues[i, k, d] for i in cs)
-                if load >= model._Q[d]:
-                    expr = grb.quicksum(model._demands[i] * model._z[i, k, d] for i in cs)
-                    model.cbLazy(expr <= model._Q[d] * yvalues[k, d])
+                # Adicionar a solução ao pool de soluções, ordenando os clientes e depósito.
+                #SOLUTIONS_POOL.append(solution)
+                CLIENTS_SOLUTIONS[clients_list] = [obj, [k]]
+
+            if clients_list in CLIENTS_SOLUTIONS.keys() and k not in CLIENTS_SOLUTIONS[clients_list][1]:
+                obj = CLIENTS_SOLUTIONS[clients_list][0]
+
+                expr = grb.quicksum((1 - model._z[i, k, d]) for i in cs)
+                model.cbLazy(model._alpha[k, d] >= obj - obj * expr)
+
+                CLIENTS_SOLUTIONS[clients_list][1].append(k)
 
 
-def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
+
+def solve_tsp(edges_weights, clients, depot, num_customers):
     model = grb.Model("TSP-DL-subtours-Load")
     model.Params.OutputFlag = 0
 
@@ -207,6 +222,7 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
     arcs = list(product(nodes, nodes))
 
     x = model.addVars(arcs, vtype=grb.GRB.BINARY, name='x')
+    # Utilizada para a remoção de subcilcos
     u = model.addVars(nodes, ub=len(nodes)-2, vtype=grb.GRB.CONTINUOUS, name='u')
 
     # Objective: Minimize total travel cost    
@@ -239,17 +255,9 @@ def solve_tsp(edges_weights, clients, depot, num_customers, demands, max_load):
         for (i, j) in combinations(nodes, 2)
     )
 
-    # Vehicle load constraints
-    for i in clients:
-        model.addConstr(
-            grb.quicksum(demands[i] * x[i, j] for j in nodes) <= max_load,
-            name=f"vehicle_load_{i}")
-
     model.optimize()
 
     return model.objVal
-
-
 
 def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     # Reading instance
@@ -274,7 +282,6 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     z = model.addVars(product(customers, vehicles, depots), vtype=grb.GRB.BINARY, name="z")
     y = model.addVars(product(vehicles, depots), vtype=grb.GRB.BINARY, name="y")
     alpha = model.addVars(product(vehicles, depots), lb=0, vtype=grb.GRB.CONTINUOUS, name="alpha")
-    load = model.addVars(product(vehicles, depots), lb=0, ub=80.0, vtype=grb.GRB.CONTINUOUS, name="load")
 
     vehicle_penallity = 1000
 
@@ -325,7 +332,8 @@ def solve_model(filename, execution_minutes: int = 1, write_results: int = 1):
     model._z = z
     model._y = y
     model._alpha = alpha
-    model._load = load
+    model._in = 0
+    model._out = 0
 
     # Benders Callback
     model.optimize(mycallback)
@@ -357,7 +365,7 @@ if __name__ == "__main__":
 
 if __name__ == '__teste__':
     filePath = r'../datasets/C-mdvrp/Ajustados/p01-pequeno'
-    solve_model(filePath, execution_minutes=1, write_results=0)
+    solve_model(filePath, execution_minutes=5, write_results=0)
 
 
 
